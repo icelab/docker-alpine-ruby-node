@@ -176,6 +176,6 @@ RUN apk add --no-cache --virtual .sass-builddeps $NODE_SASS_BUILD_PACKAGES && \
   git submodule update --init --recursive && \
   npm install && \
   node scripts/build -f && \
-  cp vendor/linux-x64-48/binding.node /usr/local/lib/sass_binding.node && \
+  cp vendor/linux_musl-x64-51/binding.node /usr/local/lib/sass_binding.node && \
   cd / && rm -rf /usr/src/sass && \
   apk del .sass-builddeps
