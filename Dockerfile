@@ -11,10 +11,10 @@ RUN mkdir -p /usr/local/etc \
     echo 'update: --no-document'; \
   } >> /usr/local/etc/gemrc
 
-ENV RUBY_MAJOR 2.3
-ENV RUBY_VERSION 2.3.1
-ENV RUBY_DOWNLOAD_SHA256 b87c738cb2032bf4920fef8e3864dc5cf8eae9d89d8d523ce0236945c5797dcd
-ENV RUBYGEMS_VERSION 2.6.6
+ENV RUBY_MAJOR 2.4
+ENV RUBY_VERSION 2.4.0
+ENV RUBY_DOWNLOAD_SHA256 3a87fef45cba48b9322236be60c455c13fd4220184ce7287600361319bb63690
+ENV RUBYGEMS_VERSION 2.6.8
 
 # some of ruby's build scripts are written in ruby
 #   we purge system ruby later to make sure our final image uses what we just built
@@ -46,13 +46,14 @@ RUN set -ex \
     tar \
     yaml-dev \
     zlib-dev \
+    xz \
   \
-  && wget -O ruby.tar.gz "https://cache.ruby-lang.org/pub/ruby/$RUBY_MAJOR/ruby-$RUBY_VERSION.tar.gz" \
-  && echo "$RUBY_DOWNLOAD_SHA256 *ruby.tar.gz" | sha256sum -c - \
+  && wget -O ruby.tar.xz "https://cache.ruby-lang.org/pub/ruby/${RUBY_MAJOR%-rc}/ruby-$RUBY_VERSION.tar.xz" \
+  && echo "$RUBY_DOWNLOAD_SHA256 *ruby.tar.xz" | sha256sum -c - \
   \
   && mkdir -p /usr/src/ruby \
-  && tar -xzf ruby.tar.gz -C /usr/src/ruby --strip-components=1 \
-  && rm ruby.tar.gz \
+  && tar -xJf ruby.tar.xz -C /usr/src/ruby --strip-components=1 \
+  && rm ruby.tar.xz \
   \
   && cd /usr/src/ruby \
   \
@@ -68,7 +69,7 @@ RUN set -ex \
   && autoconf \
 # the configure script does not detect isnan/isinf as macros
   && ac_cv_func_isnan=yes ac_cv_func_isinf=yes \
-    ./configure --disable-install-doc \
+    ./configure --disable-install-doc --enable-shared \
   && make -j"$(getconf _NPROCESSORS_ONLN)" \
   && make install \
   \
@@ -93,7 +94,7 @@ RUN set -ex \
   \
   && gem update --system "$RUBYGEMS_VERSION"
 
-ENV BUNDLER_VERSION 1.13.1
+ENV BUNDLER_VERSION 1.13.7
 
 RUN gem install bundler --version "$BUNDLER_VERSION"
 
@@ -116,11 +117,11 @@ RUN mkdir -p "$GEM_HOME" "$BUNDLE_BIN" \
 # - modified final line so it doesn't rm -rf /etc/ssl
 ######################################################################
 
-# ENV NODE_VERSION=v0.10.46 CFLAGS="-D__USE_MISC" NPM_VERSION=2
-# ENV NODE_VERSION=v0.12.15 NPM_VERSION=2
-# ENV NODE_VERSION=v4.5.0 NPM_VERSION=2
-# ENV NODE_VERSION=v5.12.0 NPM_VERSION=3
-ENV NODE_VERSION=v6.6.0 NPM_VERSION=3
+# ENV NODE_VERSION=v0.10.48 CFLAGS="-D__USE_MISC" NPM_VERSION=2
+# ENV NODE_VERSION=v0.12.17 NPM_VERSION=2
+# ENV NODE_VERSION=v4.7.0 NPM_VERSION=2
+# ENV NODE_VERSION=v6.9.2 NPM_VERSION=3
+ENV NODE_VERSION=v7.3.0 NPM_VERSION=3
 
 # For base builds
 # ENV NODE_CONFIG_FLAGS="--without-npm" RM_DIRS=/usr/include
@@ -143,7 +144,7 @@ RUN apk add --no-cache curl make gcc g++ python linux-headers paxctl libgcc libs
   tar -zxf node-${NODE_VERSION}.tar.gz && \
   cd node-${NODE_VERSION} && \
   export GYP_DEFINES="linux_use_gold_flags=0" && \
-  ./configure --prefix=/usr ${NODE_CONFIG_FLAGS} && \
+  ./configure --prefix=/usr ${CONFIG_FLAGS} && \
   NPROC=$(grep -c ^processor /proc/cpuinfo 2>/dev/null || 1) && \
   make -j${NPROC} -C out mksnapshot BUILDTYPE=Release && \
   paxctl -cm out/Release/mksnapshot && \
