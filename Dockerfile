@@ -1,7 +1,7 @@
-FROM alpine:3.4
+FROM alpine:3.5
 
 ###############################################################################
-# https://github.com/docker-library/ruby/blob/master/2.3/alpine/Dockerfile
+# https://github.com/docker-library/ruby/blob/master/2.4/alpine/Dockerfile
 ###############################################################################
 
 # skip installing gem documentation
@@ -12,9 +12,9 @@ RUN mkdir -p /usr/local/etc \
   } >> /usr/local/etc/gemrc
 
 ENV RUBY_MAJOR 2.4
-ENV RUBY_VERSION 2.4.0
-ENV RUBY_DOWNLOAD_SHA256 3a87fef45cba48b9322236be60c455c13fd4220184ce7287600361319bb63690
-ENV RUBYGEMS_VERSION 2.6.8
+ENV RUBY_VERSION 2.4.1
+ENV RUBY_DOWNLOAD_SHA256 4fc8a9992de3e90191de369270ea4b6c1b171b7941743614cc50822ddc1fe654
+ENV RUBYGEMS_VERSION 2.6.11
 
 # some of ruby's build scripts are written in ruby
 #   we purge system ruby later to make sure our final image uses what we just built
@@ -94,7 +94,7 @@ RUN set -ex \
   \
   && gem update --system "$RUBYGEMS_VERSION"
 
-ENV BUNDLER_VERSION 1.13.7
+ENV BUNDLER_VERSION 1.14.6
 
 RUN gem install bundler --version "$BUNDLER_VERSION"
 
@@ -114,52 +114,46 @@ RUN mkdir -p "$GEM_HOME" "$BUNDLE_BIN" \
 #
 # - renamed VERSION var to NODE_VERSION
 # - renamed CONFIG_FLAGS to NODE_CONFIG_FLAGS
-# - modified final line so it doesn't rm -rf /etc/ssl
+# - added yarn installation lines
 ######################################################################
 
-# ENV NODE_VERSION=v0.10.48 CFLAGS="-D__USE_MISC" NPM_VERSION=2
-# ENV NODE_VERSION=v0.12.17 NPM_VERSION=2
-# ENV NODE_VERSION=v4.7.0 NPM_VERSION=2
-# ENV NODE_VERSION=v6.9.2 NPM_VERSION=3
-ENV NODE_VERSION=v7.3.0 NPM_VERSION=3
+ENV NODE_VERSION=v7.9.0 NPM_VERSION=4
 
 # For base builds
-# ENV NODE_CONFIG_FLAGS="--without-npm" RM_DIRS=/usr/include
-# ENV NODE_CONFIG_FLAGS="--fully-static --without-npm" DEL_PKGS="libgcc libstdc++" RM_DIRS=/usr/include
+# ENV NODE_CONFIG_FLAGS="--fully-static --without-npm" DEL_PKGS="libstdc++" RM_DIRS=/usr/include
 
-RUN apk add --no-cache curl make gcc g++ python linux-headers paxctl libgcc libstdc++ gnupg && \
-  gpg --keyserver ha.pool.sks-keyservers.net --recv-keys \
-    9554F04D7259F04124DE6B476D5A82AC7E37093B \
+RUN apk add --no-cache curl make gcc g++ python linux-headers binutils-gold gnupg libstdc++ && \
+  for key in \
     94AE36675C464D64BAFA68DD7434390BDBE9B9C5 \
-    0034A06D9D9B0064CE8ADF6BF1747F4AD2306D93 \
     FD3A5288F042B6850C66B31F09FE44734EB7990E \
     71DCFD284A79C3B38668286BC97EC7A07EDE3FC1 \
     DD8F2338BAE7501E3DD5AC78C273792F7D83545D \
     C4F0DFFF4E8C1A8236409D08E73BC641CC11F4C8 \
-    B9AE9905FFD7803F25714661B63B535A4C206CA9 && \
-  curl -o node-${NODE_VERSION}.tar.gz -sSL https://nodejs.org/dist/${NODE_VERSION}/node-${NODE_VERSION}.tar.gz && \
-  curl -o SHASUMS256.txt.asc -sSL https://nodejs.org/dist/${NODE_VERSION}/SHASUMS256.txt.asc && \
-  gpg --verify SHASUMS256.txt.asc && \
-  grep node-${NODE_VERSION}.tar.gz SHASUMS256.txt.asc | sha256sum -c - && \
-  tar -zxf node-${NODE_VERSION}.tar.gz && \
+    B9AE9905FFD7803F25714661B63B535A4C206CA9 \
+    56730D5401028683275BD23C23EFEFE93C4CFFFE \
+  ; do \
+    gpg --keyserver ha.pool.sks-keyservers.net --recv-keys "$key" || \
+    gpg --keyserver pgp.mit.edu --recv-keys "$key" || \
+    gpg --keyserver keyserver.pgp.com --recv-keys "$key" ; \
+  done && \
+  curl -sSLO https://nodejs.org/dist/${NODE_VERSION}/node-${NODE_VERSION}.tar.xz && \
+  curl -sSL https://nodejs.org/dist/${NODE_VERSION}/SHASUMS256.txt.asc | gpg --batch --decrypt | \
+    grep " node-${NODE_VERSION}.tar.xz\$" | sha256sum -c | grep . && \
+  tar -xf node-${NODE_VERSION}.tar.xz && \
   cd node-${NODE_VERSION} && \
-  export GYP_DEFINES="linux_use_gold_flags=0" && \
   ./configure --prefix=/usr ${CONFIG_FLAGS} && \
-  NPROC=$(grep -c ^processor /proc/cpuinfo 2>/dev/null || 1) && \
-  make -j${NPROC} -C out mksnapshot BUILDTYPE=Release && \
-  paxctl -cm out/Release/mksnapshot && \
-  make -j${NPROC} && \
+  make -j$(getconf _NPROCESSORS_ONLN) && \
   make install && \
-  paxctl -cm /usr/bin/node && \
   cd / && \
   if [ -x /usr/bin/npm ]; then \
     npm install -g npm@${NPM_VERSION} && \
     find /usr/lib/node_modules/npm -name test -o -name .bin -type d | xargs rm -rf; \
   fi && \
-  apk del curl make gcc g++ python linux-headers paxctl gnupg ${DEL_PKGS} && \
-  rm -rf /node-${NODE_VERSION}.tar.gz /SHASUMS256.txt.asc /node-${NODE_VERSION} ${RM_DIRS} \
-    /usr/share/man /tmp/* /var/cache/apk/* /root/.npm /root/.node-gyp /root/.gnupg \
-    /usr/lib/node_modules/npm/man /usr/lib/node_modules/npm/doc /usr/lib/node_modules/npm/html
+  curl -o- -L https://yarnpkg.com/install.sh | sh && \
+  apk del curl make gcc g++ python linux-headers binutils-gold gnupg ${DEL_PKGS} && \
+  rm -rf ${RM_DIRS} /node-${NODE_VERSION}* /usr/share/man /tmp/* /var/cache/apk/* \
+    /root/.npm /root/.node-gyp /root/.gnupg /usr/lib/node_modules/npm/man \
+    /usr/lib/node_modules/npm/doc /usr/lib/node_modules/npm/html /usr/lib/node_modules/npm/scripts
 
 ######################################################################
 # Adapted from https://github.com/kws/alpine-node-sass/
@@ -179,3 +173,5 @@ RUN apk add --no-cache --virtual .sass-builddeps $NODE_SASS_BUILD_PACKAGES && \
   cp vendor/linux_musl-x64-51/binding.node /usr/local/lib/sass_binding.node && \
   cd / && rm -rf /usr/src/sass && \
   apk del .sass-builddeps
+
+ENV SASS_BINARY_PATH /usr/local/lib/sass_binding.node
